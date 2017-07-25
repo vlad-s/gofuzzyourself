@@ -6,8 +6,9 @@ This tool is part of the learning process of the Go programming language.
 What does it do
 ---
 - GET fuzzing
+- Header fuzzing (via `-H` argument)
 - Follows redirects automatically (via `-follow` argument)
-- Ability to set user agent (via `-user-agent` argument)
+- Ability to set user agent (via `-user-agent` or `-H` arguments)
 
 Filters
 ---

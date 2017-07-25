@@ -2,7 +2,6 @@ package fuzzer
 
 import (
 	"bufio"
-	"net/http"
 	"os"
 	"sort"
 	"strconv"
@@ -19,16 +18,17 @@ func ParseCodesFromString(x string) (c []int) {
 	return
 }
 
-func ParseCookiesFromString(x string) (c []http.Cookie) {
+func ParseHeadersFromString(x string) map[string]string {
+	c := make(map[string]string)
 	for _, v := range strings.Split(x, ",") {
 		if s := strings.Split(v, "="); len(s) == 2 {
-			c = append(c, http.Cookie{Name: s[0], Value: s[1]})
+			c[s[0]] = s[1]
 		}
 	}
-	return
+	return c
 }
 
-func ReadWordlist(p string) (t []string, err error) {
+func ReadWordList(p string) (t []string, err error) {
 	f, err := os.Open(p)
 	if err != nil {
 		return

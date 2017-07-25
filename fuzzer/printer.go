@@ -21,6 +21,9 @@ func makeFormat(h []string) (s string, i []interface{}) {
 }
 
 func limitToken(t string, s int) string {
+	if t == "" {
+		return "<null>"
+	}
 	if len(t) > s {
 		maxLen := (s - 3) / 2
 		t = t[:maxLen] + "..." + t[len(t)-maxLen:]
@@ -52,16 +55,16 @@ func (f *Fuzzer) PrintHeader() {
 }
 
 func (f *Fuzzer) Print(r *FuzzResponse) {
-	r.Token = limitToken(r.Token, 60)
-	r.Location = limitToken(r.Location, 60)
+	token := limitToken(r.Token, 60)
+	location := limitToken(r.Location, 60)
 
 	body := []interface{}{r.StatusCode, r.ContentLength}
 	if f.BodyContains != "" {
 		body = append(body, r.BodyContains)
 	}
 	if f.FollowRedirect == false {
-		body = append(body, r.Location)
+		body = append(body, location)
 	}
-	body = append(body, r.Token)
+	body = append(body, token)
 	fmt.Fprintf(os.Stdout, printFormat, body...)
 }

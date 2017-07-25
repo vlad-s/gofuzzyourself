@@ -28,6 +28,7 @@ type FuzzSettings struct {
 
 	FollowRedirect bool
 	UserAgent      string
+	Headers        map[string]string
 	Cookies        []http.Cookie
 
 	ShowCodes StatusCodes
@@ -84,9 +85,9 @@ func (f *Fuzzer) Start() {
 
 func (f *Fuzzer) Check(token string) {
 	url, tag := f.UrlAddress, f.UrlTag
-	url = strings.Replace(url, tag, token, 1)
+	url = strings.Replace(url, tag, token, -1)
 
-	response, err := f.request(url)
+	response, err := f.request(url, token)
 	if err != nil {
 		f.Pop()
 		return
@@ -141,7 +142,7 @@ func (f *Fuzzer) Check(token string) {
 	f.Pop()
 }
 
-func (f *Fuzzer) request(url string) (resp *http.Response, err error) {
+func (f *Fuzzer) request(url, token string) (resp *http.Response, err error) {
 	if f.HttpClient == nil {
 		f.HttpClient = &http.Client{
 			Timeout: 5 * time.Second,
@@ -160,6 +161,12 @@ func (f *Fuzzer) request(url string) (resp *http.Response, err error) {
 	}
 
 	req.Header.Set("User-Agent", f.UserAgent)
+	for k, v := range f.Headers {
+		if v == f.UrlTag {
+			v = token
+		}
+		req.Header.Set(k, v)
+	}
 
 	return f.HttpClient.Do(req)
 }
