@@ -4,118 +4,106 @@ import (
 	"flag"
 	"log"
 	"os"
-	"strings"
+	"os/signal"
 	"sync"
 
-	"os/signal"
-
+	"github.com/vlad-s/gofuzzyourself/flags"
 	"github.com/vlad-s/gofuzzyourself/fuzzer"
 )
 
 var (
-	help    = flag.Bool("h", false, "Show the help message")
-	verbose = flag.Bool("v", false, "Verbose output")
 	workers = flag.Int("workers", 32, "How many spawned workers")
 
-	urlFlag  = flag.String("U", "", "The `URL` to fuzz")
-	fuzzFlag = flag.String("F", "$fuzz$", "The `flag` to use in fuzzing")
-	wordList = flag.String("W", "", "The `wordlist` to use in fuzzing")
-	headers  = flag.String("H", "", "The `headers` to use in fuzzing, separated by comma")
+	fuzzUrl       = flag.String("url", "", "The `URL` to fuzz")
+	fuzzFlag      = flag.String("flag", "$fuzz$", "The `flag` to use")
+	wordList      = flag.String("wordlist", "", "The `wordlist` to use")
+	httpMethod    = flag.String("method", "GET", "The HTTP `method` to use")
+	httpHeaders   = flag.String("headers", "", "The `headers` to use, separated by comma")
+	httpUserAgent = flag.String("user-agent", "-", "The `User-Agent` to use")
+	postData      = flag.String("data", "", "The `post data` to use, fields separated by comma")
 	//cookiesFlag  = flag.String("C", "", "`Cookies` to use, separated by a semicolon")
-	//postFlag     = flag.String("D", "", "The post `data` to use in fuzzing")
 
-	contains  = flag.String("contains", "", "Search the body for the specified `string`")
-	follow    = flag.Bool("follow", false, "Follow or not redirects")
-	userAgent = flag.String("user-agent", "-", "The `User-Agent` to use")
+	contains = flag.String("contains", "", "Search the body for the specified `string`")
+	follow   = flag.Bool("follow", false, "Follow or not redirects")
 
 	showCodes = flag.String("show", "", "Show only the status `codes`, separated by comma")
 	hideCodes = flag.String("hide", "", "Hide the status `codes`, separated by comma")
+
+	sleep    = flag.Float64("sleep", 0, "How many seconds to sleep between requests (default 0)\n\tEqual to -sleep-min X -sleep-max X")
+	sleepMin = flag.Float64("sleep-min", 0, "Inferior limit of the time range (default 0)")
+	sleepMax = flag.Float64("sleep-max", 0, "Superior limit of the time range (default 0)")
 )
 
 var (
-	wg sync.WaitGroup
+	err error
+	wg  sync.WaitGroup
 
+	Fuzzer     *fuzzer.Fuzzer
 	FuzzTokens []string
 )
 
 func parseFlags() {
 	flag.Parse()
 
-	if *help {
-		flag.PrintDefaults()
+	flags.CheckRequired(workers, fuzzUrl, fuzzFlag, wordList)
+	flags.CheckMethodAndData(httpMethod, postData)
+	flags.CheckFilters(showCodes, hideCodes)
+	flags.CheckSleep(sleep, sleepMin, sleepMax)
+
+	FuzzTokens, err = fuzzer.ReadWordList(*wordList)
+	if err != nil {
+		log.Fatalln("[ERROR] Can't read wordlist.")
+	}
+}
+
+func init() {
+	if len(os.Args) == 1 {
+		flag.Usage()
 		os.Exit(0)
 	}
 
-	if *workers <= 0 {
-		log.Fatalln("[ERROR] Workers must be a number bigger than zero")
-	}
-
-	switch "" {
-	case *urlFlag:
-		log.Fatalln("[ERROR] URL is not set, exiting.")
-	case *fuzzFlag:
-		log.Fatalln("[ERROR] Fuzz flag is not set, exiting.")
-	case *wordList:
-		log.Fatalln("[ERROR] Wordlist is not set, exiting.")
-	}
-
-	var err error
-	FuzzTokens, err = fuzzer.ReadWordList(*wordList)
-	if err != nil {
-		log.Fatalln("[ERROR] Can't read wordlist, exiting.")
-	}
-
-	if strings.Index(*urlFlag, *fuzzFlag) == -1 {
-		log.Fatalln("[ERROR] URL doesn't contain the fuzzing flag, exiting.")
-	}
-
-	if *showCodes != "" && *hideCodes != "" {
-		log.Fatalln("[ERROR] `-show` and `-hide` flags are mutually exclusive, exiting.")
-	}
-}
-
-func main() {
 	parseFlags()
+	Fuzzer = fuzzer.New()
 
-	f := fuzzer.New()
-	notifyInterrupt(f)
-
-	f.WaitGroup = &wg
-	f.Throttler = make(chan int, *workers)
-
-	f.FuzzSettings = fuzzer.FuzzSettings{
-		Tokens: FuzzTokens,
-
-		UrlAddress:   *urlFlag,
-		UrlTag:       *fuzzFlag,
-		BodyContains: *contains,
-
-		FollowRedirect: *follow,
-		Headers:        fuzzer.ParseHeadersFromString(*headers),
-		UserAgent:      *userAgent,
-
-		ShowCodes: fuzzer.ParseCodesFromString(*showCodes),
-		HideCodes: fuzzer.ParseCodesFromString(*hideCodes),
-	}
-
-	if *verbose {
-		log.Printf("[DEBUG] Fuzzer: %+v", f)
-	}
-
-	f.PrintHeader()
-	f.Start()
-
-	wg.Wait()
-}
-
-func notifyInterrupt(f *fuzzer.Fuzzer) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {
 		for range c {
 			log.Println("[KILL] We got ^C")
-			log.Printf("We only got %d responses until now.\n", len(f.Responses))
+			log.Printf("We only got %d responses until now.\n", len(Fuzzer.Responses))
 			os.Exit(0)
 		}
 	}()
+}
+
+func main() {
+	Fuzzer.WaitGroup = &wg
+	Fuzzer.Throttler = make(chan int, *workers)
+
+	Fuzzer.Sleep = fuzzer.SleepInterval{
+		Min: *sleepMin,
+		Max: *sleepMax,
+	}
+
+	Fuzzer.FuzzSettings = fuzzer.FuzzSettings{
+		Tokens: FuzzTokens,
+
+		UrlAddress:   *fuzzUrl,
+		UrlTag:       *fuzzFlag,
+		BodyContains: *contains,
+
+		FollowRedirect: *follow,
+		Headers:        fuzzer.ParseHeaders(*httpHeaders),
+		Method:         *httpMethod,
+		PostData:       fuzzer.ParsePostData(*postData),
+		UserAgent:      *httpUserAgent,
+
+		ShowCodes: fuzzer.ParseStatusCodes(*showCodes),
+		HideCodes: fuzzer.ParseStatusCodes(*hideCodes),
+	}
+
+	Fuzzer.PrintHeader()
+	Fuzzer.Start()
+
+	wg.Wait()
 }

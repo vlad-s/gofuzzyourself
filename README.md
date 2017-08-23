@@ -5,19 +5,20 @@ This tool is part of the learning process of the Go programming language.
 
 What does it do
 ---
-- GET fuzzing
-- Header fuzzing (via `-H` argument)
-- Follows redirects automatically (via `-follow` argument)
-- Ability to set user agent (via `-user-agent` or `-H` arguments)
+- GET, HEAD, or POST fuzzing
+- Header fuzzing
+- Can follow redirects, if specified
+- Ability to set user agent
+- Ability to sleep a predefined time between requests, in case of a throttler
 
 Filters
 ---
-- Keyword filtering (via `-contains` argument)
-- Hides or shows requests by status code (via `-hide` and `-show` arguments)
+- Keyword filtering
+- Status code filtering
 
 Getting & using
 ---
 ```bash
 $ go get -u github.com/vlad-s/gofuzzyourself
-$ gofuzzyourself -h
+$ gofuzzyourself
 ```
